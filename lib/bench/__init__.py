@@ -1,4 +1,3 @@
-#! /usr/bin/env python
 # The MIT License (MIT)
 #
 # Copyright (c) 2013 Carwyn Pelley
@@ -29,7 +28,7 @@ import inspect
 import os
 
 
-class ContextDecorator(object):
+class _ContextDecorator(object):
     """
     A modified base class or mixin taken from python3.2 contextlib source that
     enables context managers to work as decorators.
@@ -43,7 +42,7 @@ class ContextDecorator(object):
         return inner
 
 
-class MemoryUsage(ContextDecorator):
+class MemoryUsage(_ContextDecorator):
     def __init__(self):
         self._pid = os.getpid()
         self._stat1 = self.get_log()
@@ -105,13 +104,14 @@ class MemoryUsage(ContextDecorator):
 
 
 if __name__ == '__main__':
-    for i in [1, 2, 3, 4]:
-        a = 0
-        with MemoryUsage() as mu:
-            a + 1
+    import numpy as np
+
+    with MemoryUsage() as mu:
+        arr = np.arange(200000)
 
     @MemoryUsage()
-    def print_hello():
-        pass
+    def gen_array():
+        arr = np.arange(200000)
+        return arr
 
-    print_hello()
+    gen_array()
