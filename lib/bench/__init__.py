@@ -24,7 +24,6 @@ Bench is a small module for determining program memory usage.
 
 '''
 from functools import wraps
-import inspect
 import os
 
 
@@ -43,24 +42,16 @@ class _ContextDecorator(object):
 
 
 class MemoryUsage(_ContextDecorator):
-    def __init__(self):
+    def __init__(self, out='stdout'):
         self._pid = os.getpid()
-        self._stat1 = self.get_log()
-        self._stat2 = None
+        self._stat = []
+        self.get_log()
         self._summary_print = True
+        self.out = out
 
     @property
-    def usage_t0(self):
-        return self._stat1
-
-    @property
-    def usage_t1(self):
-        if self._stat2 is None:
-            self._stat2 = self.get_log()
-        return self._stat2
-
-    def update_statistic(self):
-        self._stat2 = self.get_log()
+    def usage(self):
+        return self._stat
 
     @property
     def pid(self):
@@ -72,21 +63,54 @@ class MemoryUsage(_ContextDecorator):
             stat = fh.read()
             stat = [ss.split(':') for ss in
                     stat.replace(' ', '').replace('\t', '').split('\n')]
-        return {item[0]: item[1] for item in stat if len(item) == 2}
+        self.usage.append({item[0]: item[1] for
+                           item in stat if len(item) == 2})
 
     @staticmethod
-    def print_summary(statistics):
-        return ('Virtual memory usage {}Kb (peak {}Kb)\n'
-                'Resident set size {}Kb (peak {}Kb)\n'.format(
-                statistics['VmSize'], statistics['VmPeak'],
-                statistics['VmRSS'], statistics['VmHWM']))
+    def print_summary(statistic):
+        width = 9
+        msg = (''.join([item.rjust(width*2, ' ') for item in
+               ['Current Usage', 'Current Usage Inc', 'Process Peak',
+                'Process Peak Inc']])) + '\n'
+        msg = msg + ' '.ljust(width*2, '#') * 4 + '\n'
+        msg = msg + (''.join([item.rjust(width, ' ') for item in
+                     ['VirtMem', 'RSS']])) * 4 + '\n'
+        msg += '{}' * 8 + '\n'
+        params = [statistic['VmSize'], statistic['VmRSS'],
+                  statistic['inc_VmSize'], statistic['inc_VmRSS'],
+                  statistic['VmPeak'], statistic['VmHWM'],
+                  statistic['inc_VmPeak'], statistic['inc_VmHWM']]
+        for iparam in range(len(params)):
+            param = params[iparam]
+            if param > 1e9:
+                param *= 1e-9
+                unit = 'TB'
+            elif param > 1e6:
+                param *= 1e-6
+                unit = 'GB'
+            elif param > 1e3:
+                param *= 1e-3
+                unit = 'MB'
+            else:
+                unit = 'KB'
+            params[iparam] = ('{:6.2f}{}'.format(param, unit))
+            params[iparam] = params[iparam].rjust(width, ' ')
 
-    def memory_consumption(self):
-        return {name: (int(''.join(char for char in self.usage_t1[name] if
-                                   char.isdigit())) -
-                       int(''.join(char for char in self.usage_t0[name] if
-                                   char.isdigit()))) for
-                name in ['VmSize', 'VmPeak', 'VmRSS', 'VmHWM']}
+        print msg.format(*params)
+
+    def get_usage(self):
+        self.get_log()
+        diff_log = {'inc_{}'.format(name):
+                    (int(''.join(char for char in self.usage[-1][name] if
+                                 char.isdigit())) -
+                     int(''.join(char for char in self.usage[-2][name] if
+                                 char.isdigit()))) for
+                    name in ['VmSize', 'VmPeak', 'VmRSS', 'VmHWM']}
+        diff_log.update({name:
+                        (int(''.join(char for char in self.usage[-1][name] if
+                                     char.isdigit()))) for name in
+                         ['VmSize', 'VmPeak', 'VmRSS', 'VmHWM']})
+        self.print_summary(diff_log)
 
     def __enter__(self):
         #stack = inspect.stack()
@@ -96,22 +120,27 @@ class MemoryUsage(_ContextDecorator):
         return self
 
     def __exit__(self, type, value, traceback):
-        memcon = self.memory_consumption()
-        if self._summary_print:
-            print 'Memory consumption:'
-            #print self.stack
-            print self.print_summary(memcon)
+        self.get_usage()
 
 
 if __name__ == '__main__':
-    import numpy as np
-
-    with MemoryUsage() as mu:
-        arr = np.arange(200000)
-
     @MemoryUsage()
     def gen_array():
-        arr = np.arange(200000)
+        arr = range(200000)
         return arr
 
+    # Method 1: decorator
     gen_array()
+
+    # Method 2: context manager
+    with MemoryUsage() as mu:
+        arr = range(200000)
+
+    # Method 3: instance
+    mem = MemoryUsage()
+    arr = range(200000)
+    mem.get_usage()
+    arr = range(200000)
+    mem.get_usage()
+    arr = range(400000)
+    mem.get_usage()
