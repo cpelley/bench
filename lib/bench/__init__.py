@@ -24,6 +24,7 @@ Bench is a small module for determining program memory usage.
 
 '''
 from functools import wraps
+import inspect
 import os
 
 
@@ -49,6 +50,11 @@ class MemoryUsage(_ContextDecorator):
         self._summary_print = True
         self.out = out
 
+        # Override stack from get_log
+        stack = inspect.stack()
+        self.usage[-1].update({'context': inspect.stack()[2]})
+
+
     @property
     def usage(self):
         return self._stat
@@ -65,6 +71,8 @@ class MemoryUsage(_ContextDecorator):
                     stat.replace(' ', '').replace('\t', '').split('\n')]
         self.usage.append({item[0]: item[1] for
                            item in stat if len(item) == 2})
+        stack = inspect.stack()
+        self.usage[-1].update({'context': inspect.stack()[2]})
 
     @staticmethod
     def print_summary(statistic):
@@ -96,6 +104,7 @@ class MemoryUsage(_ContextDecorator):
             params[iparam] = ('{:6.2f}{}'.format(param, unit))
             params[iparam] = params[iparam].rjust(width, ' ')
 
+        msg += statistic['context']
         print msg.format(*params)
 
     def get_usage(self):
@@ -110,13 +119,12 @@ class MemoryUsage(_ContextDecorator):
                         (int(''.join(char for char in self.usage[-1][name] if
                                      char.isdigit()))) for name in
                          ['VmSize', 'VmPeak', 'VmRSS', 'VmHWM']})
+        diff_log.update({'context': '{}-{}'.format(
+                         self.usage[-2]['context'][2],
+                         self.usage[-1]['context'][2])})
         self.print_summary(diff_log)
 
     def __enter__(self):
-        #stack = inspect.stack()
-        #self.stack = inspect.stack()#[1]
-        #self.stack = [inspect.currentframe()] + self.stack
-
         return self
 
     def __exit__(self, type, value, traceback):
