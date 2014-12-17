@@ -1,6 +1,6 @@
 # The MIT License (MIT)
 #
-# Copyright (c) 2013 Carwyn Pelley
+# Copyright (c) 2014 Carwyn Pelley
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -42,6 +42,11 @@ class _ContextDecorator(object):
 
 
 class MemoryUsage(_ContextDecorator):
+    """
+    Determine process current and peak usage as well as consumption between
+    retrievals.
+
+    """
     def __init__(self, out='stdout'):
         self._pid = os.getpid()
         self._stat = []
@@ -113,10 +118,6 @@ class MemoryUsage(_ContextDecorator):
         self.print_summary(diff_log)
 
     def __enter__(self):
-        #stack = inspect.stack()
-        #self.stack = inspect.stack()#[1]
-        #self.stack = [inspect.currentframe()] + self.stack
-
         return self
 
     def __exit__(self, type, value, traceback):
@@ -124,23 +125,9 @@ class MemoryUsage(_ContextDecorator):
 
 
 if __name__ == '__main__':
-    @MemoryUsage()
-    def gen_array():
-        arr = range(200000)
-        return arr
+    import sys
 
-    # Method 1: decorator
-    gen_array()
-
-    # Method 2: context manager
-    with MemoryUsage() as mu:
-        arr = range(200000)
-
-    # Method 3: instance
+    module = os.path.splitext(sys.argv[1])[0]
     mem = MemoryUsage()
-    arr = range(200000)
-    mem.get_usage()
-    arr = range(200000)
-    mem.get_usage()
-    arr = range(400000)
+    exec('import {}'.format(module))
     mem.get_usage()
