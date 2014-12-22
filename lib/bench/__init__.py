@@ -25,6 +25,7 @@ Bench is a small module for determining program memory usage.
 '''
 from functools import wraps
 import os
+import sys
 
 
 class _ContextDecorator(object):
@@ -39,6 +40,50 @@ class _ContextDecorator(object):
             with self:
                 return func(*args, **kwds)
         return inner
+
+
+class _Engine(object):
+    fields = ['VmSize', 'VmRSS', 'VmPeak', 'VmHWM']
+
+    def get_log(self):
+        return NotImplemented
+
+
+class _LinuxEngine(_Engine):
+    def __init__(self):
+        self._pid = os.getpid()
+
+    @property
+    def pid(self):
+        return self._pid
+
+    def get_log(self):
+        def get_field(string):
+            stat = string.replace(' ', '').replace('\t', '').split(':')
+            if stat[0] in self.fields:
+                assert stat[1][-2:] == 'kB'
+                stat = {stat[0]: int(stat[1][:-2])}
+            else:
+                stat = None
+            return stat
+
+        fnme = os.path.join('/', 'proc', str(self.pid), 'status')
+        with open(fnme, 'r') as fh:
+            stat = fh.read()
+        fields = {}
+        for line in stat.split('\n'):
+            field = get_field(line)
+            if field:
+                fields.update(field)
+        return fields
+
+
+# Set operating system dependent engine.
+if os.name == 'posix':
+    ENGINE = _LinuxEngine()
+else:
+    raise RuntimeError('operating system: {} not yet supported'.format(
+        sys.platform))
 
 
 class MemoryUsage(_ContextDecorator):
@@ -63,13 +108,8 @@ class MemoryUsage(_ContextDecorator):
         return self._pid
 
     def get_log(self):
-        fnme = os.path.join('/', 'proc', str(self.pid), 'status')
-        with open(fnme, 'r') as fh:
-            stat = fh.read()
-            stat = [ss.split(':') for ss in
-                    stat.replace(' ', '').replace('\t', '').split('\n')]
-        self.usage.append({item[0]: item[1] for
-                           item in stat if len(item) == 2})
+        fields = ENGINE.get_log()
+        self.usage.append(fields)
 
     @staticmethod
     def print_summary(statistic):
@@ -106,15 +146,10 @@ class MemoryUsage(_ContextDecorator):
     def get_usage(self):
         self.get_log()
         diff_log = {'inc_{}'.format(name):
-                    (int(''.join(char for char in self.usage[-1][name] if
-                                 char.isdigit())) -
-                     int(''.join(char for char in self.usage[-2][name] if
-                                 char.isdigit()))) for
-                    name in ['VmSize', 'VmPeak', 'VmRSS', 'VmHWM']}
-        diff_log.update({name:
-                        (int(''.join(char for char in self.usage[-1][name] if
-                                     char.isdigit()))) for name in
-                         ['VmSize', 'VmPeak', 'VmRSS', 'VmHWM']})
+                    (self.usage[-1][name] - self.usage[-2][name]) for
+                    name in self.usage[-1].keys()}
+        diff_log.update({name: self.usage[-1][name] for name in
+                         self.usage[-1].keys()})
         self.print_summary(diff_log)
 
     def __enter__(self):
@@ -125,9 +160,10 @@ class MemoryUsage(_ContextDecorator):
 
 
 if __name__ == '__main__':
-    import sys
+    #import sys
 
-    module = os.path.splitext(sys.argv[1])[0]
+    #module = os.path.splitext(sys.argv[1])[0]
     mem = MemoryUsage()
-    exec('import {}'.format(module))
+    #exec('import {}'.format(module))
+    a = range(300000)
     mem.get_usage()
