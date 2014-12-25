@@ -92,11 +92,18 @@ class MemoryUsage(_ContextDecorator):
     retrievals.
 
     """
-    def __init__(self, out='stdout'):
+    def __init__(self, out='stdout', format=None):
+        self._engine = ENGINE
+        self._format = format
+        if not format:
+            _format = [[field, 'i{}'.format(field)] for field in
+                            self._engine.fields]
+            self._format = []
+            [self._format.extend(field) for field in _format]
+
         self._pid = os.getpid()
         self._stat = []
         self.get_log()
-        self._summary_print = True
         self.out = out
 
     @property
@@ -108,23 +115,16 @@ class MemoryUsage(_ContextDecorator):
         return self._pid
 
     def get_log(self):
-        fields = ENGINE.get_log()
+        fields = self._engine.get_log()
         self.usage.append(fields)
 
-    @staticmethod
-    def print_summary(statistic):
+    def print_summary(self, statistic):
         width = 9
-        msg = (''.join([item.rjust(width*2, ' ') for item in
-               ['Current Usage', 'Current Usage Inc', 'Process Peak',
-                'Process Peak Inc']])) + '\n'
-        msg = msg + ' '.ljust(width*2, '#') * 4 + '\n'
-        msg = msg + (''.join([item.rjust(width, ' ') for item in
-                     ['VirtMem', 'RSS']])) * 4 + '\n'
-        msg += '{}' * 8 + '\n'
-        params = [statistic['VmSize'], statistic['VmRSS'],
-                  statistic['inc_VmSize'], statistic['inc_VmRSS'],
-                  statistic['VmPeak'], statistic['VmHWM'],
-                  statistic['inc_VmPeak'], statistic['inc_VmHWM']]
+        msg = (''.join([field.rjust(width, ' ') for field in self._format]) +
+               '\n')
+        msg = msg + ' '.ljust(width, '#') * len(self._format) + '\n'
+        msg += '{}' * len(self._format) + '\n'
+        params = [statistic[key] for key in self._format]
         for iparam in range(len(params)):
             param = params[iparam]
             if param > 1e9:
@@ -145,7 +145,7 @@ class MemoryUsage(_ContextDecorator):
 
     def get_usage(self):
         self.get_log()
-        diff_log = {'inc_{}'.format(name):
+        diff_log = {'i{}'.format(name):
                     (self.usage[-1][name] - self.usage[-2][name]) for
                     name in self.usage[-1].keys()}
         diff_log.update({name: self.usage[-1][name] for name in
